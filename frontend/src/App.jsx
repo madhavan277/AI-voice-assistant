@@ -16,7 +16,7 @@ function App() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [email, setEmail] = useState("");
 
-  // safe event binding
+  // Event listeners for vapi
   useEffect(() => {
     if (!vapi) return;
 
@@ -44,31 +44,44 @@ function App() {
 
   const handleInputChange = (setter) => (e) => setter(e.target.value);
 
-  //FIXED START HANDLER
+  // ✅ Robust Start Handler with mic check
   const handleStart = async () => {
-    if (!firstName || !lastName || !email || !phoneNumber) return;
+    if (!firstName || !lastName || !email || !phoneNumber) {
+      alert("Please fill all required fields");
+      return;
+    }
 
     setLoading(true);
 
     try {
-      // 🔐 Mic permission (CRITICAL)
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Request microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log("Mic access granted:", stream);
 
-      const data = await startAssistant(
-        firstName,
-        lastName,
-        email,
-        phoneNumber
-      );
+      // Start assistant only after mic is granted
+      const data = await startAssistant(firstName, lastName, email, phoneNumber);
 
       if (!data || !data.id) {
-        throw new Error("Invalid call response");
+        throw new Error("Invalid call response from assistant");
       }
 
       setCallId(data.id);
+      setLoading(false);
     } catch (err) {
-      console.error("Start failed:", err);
-      alert("Failed to start call. Check mic permission & console.");
+      console.error("Failed to start call:", err);
+
+      let msg = "Failed to start call. Check mic permission & console.";
+
+      // Provide specific error messages
+      if (err.name === "NotAllowedError") {
+        msg = "Mic access denied. Please allow microphone permission in browser.";
+      } else if (err.name === "NotFoundError") {
+        msg = "No microphone detected. Please connect a microphone.";
+      } else if (err.name === "NotReadableError") {
+        msg = "Microphone is already in use by another app.";
+      }
+
+      alert(msg);
       setLoading(false);
     }
   };
@@ -128,7 +141,7 @@ function App() {
         </>
       )}
 
-      {loading && <div className="loading"></div>}
+      {loading && <div className="loading">Starting call…</div>}
 
       {started && (
         <ActiveCallDetails
