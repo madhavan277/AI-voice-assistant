@@ -51,7 +51,7 @@ function App() {
 
   const handleInputChange = (setter) => (e) => setter(e.target.value);
 
-  // ✅ Start Assistant with proper microphone handling
+  // ✅ Robust Start Handler with mic check
   const handleStart = async () => {
     if (!firstName || !lastName || !email || !phoneNumber) {
       alert("Please fill all required fields");
@@ -61,35 +61,33 @@ function App() {
     setLoading(true);
 
     try {
+      // Check if any microphone is available
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const hasMic = devices.some((d) => d.kind === "audioinput");
+      if (!hasMic) throw new Error("No microphone found");
+
       // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      if (!stream) throw new Error("No audio stream returned");
-
       console.log("Mic access granted:", stream);
 
-      // Start assistant after mic access is granted
+      // Start assistant
       const data = await startAssistant(firstName, lastName, email, phoneNumber);
-
-      if (!data || !data.id) {
-        throw new Error("Invalid call response from assistant");
-      }
+      if (!data || !data.id) throw new Error("Invalid call response from assistant");
 
       setCallId(data.id);
-      setStarted(true); // explicitly set started here
+      setStarted(true);
       setLoading(false);
     } catch (err) {
-      console.error("Failed to start call:", err);
+      console.error("Mic error:", err);
 
       let msg = "Failed to start call. Check mic permission & console.";
 
-      // Specific error messages for mic
       if (err.name === "NotAllowedError") {
-        msg = "Microphone access denied. Please allow microphone in browser settings.";
-      } else if (err.name === "NotFoundError") {
-        msg = "No microphone found. Please connect a microphone.";
+        msg = "Mic access denied. Please allow microphone in browser settings.";
+      } else if (err.name === "NotFoundError" || err.message.includes("No microphone")) {
+        msg = "No microphone detected. Please connect a microphone.";
       } else if (err.name === "NotReadableError") {
-        msg = "Microphone is already in use by another application.";
+        msg = "Microphone is already in use by another app.";
       }
 
       alert(msg);
