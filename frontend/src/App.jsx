@@ -3,7 +3,6 @@ import { vapi, startAssistant, stopAssistant } from "./ai";
 import ActiveCallDetails from "./call/ActiveCallDetails";
 
 function App() {
-  //all states using here
   const [started, setStarted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [assistantIsSpeaking, setAssistantIsSpeaking] = useState(false);
@@ -11,58 +10,71 @@ function App() {
   const [callId, setCallId] = useState("");
   const [callResult, setCallResult] = useState(null);
   const [loadingResult, setLoadingResult] = useState(false);
+
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [email, setEmail] = useState("");
 
+  // safe event binding
   useEffect(() => {
-    vapi
-      .on("call-start", () => {
-        setLoading(false);
-        setStarted(true);
-      })
-      .on("call-end", () => {
-        setStarted(false);
-        setLoading(false);
-      })
-      .on("speech-start", () => {
-        setAssistantIsSpeaking(true);
-      })
-      .on("speech-end", () => {
-        setAssistantIsSpeaking(false);
-      })
-      .on("volume-level", (level) => {
-        setVolumeLevel(level);
-      });
+    if (!vapi) return;
+
+    const onStart = () => {
+      setLoading(false);
+      setStarted(true);
+    };
+
+    const onEnd = () => {
+      setStarted(false);
+      setLoading(false);
+    };
+
+    vapi.on("call-start", onStart);
+    vapi.on("call-end", onEnd);
+    vapi.on("speech-start", () => setAssistantIsSpeaking(true));
+    vapi.on("speech-end", () => setAssistantIsSpeaking(false));
+    vapi.on("volume-level", (level) => setVolumeLevel(level));
+
+    return () => {
+      vapi.off("call-start", onStart);
+      vapi.off("call-end", onEnd);
+    };
   }, []);
-  //function
-  const handleInputChange = (setter) => (event) => {
-    setter(event.target.value);
-  };
+
+  const handleInputChange = (setter) => (e) => setter(e.target.value);
+
+  //FIXED START HANDLER
   const handleStart = async () => {
+    if (!firstName || !lastName || !email || !phoneNumber) return;
+
     setLoading(true);
-    const data = await startAssistant(firstName, lastName, email, phoneNumber);
-    setCallId(data.id);
+
+    try {
+      // 🔐 Mic permission (CRITICAL)
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      const data = await startAssistant(
+        firstName,
+        lastName,
+        email,
+        phoneNumber
+      );
+
+      if (!data || !data.id) {
+        throw new Error("Invalid call response");
+      }
+
+      setCallId(data.id);
+    } catch (err) {
+      console.error("Start failed:", err);
+      alert("Failed to start call. Check mic permission & console.");
+      setLoading(false);
+    }
   };
+
   const handleStop = () => {
     stopAssistant();
-    getCallDetails();
-  };
-  const getCallDetails = (interval = 3000) => {
-    setLoadingResult(true);
-    fetch("/call-details?call_id=" + callId)
-      .then((response) => response.json())
-      .then((data) => {
-        if (data.analysis && data.summary) {
-          console.log(data);
-          setCallResult(data);
-          setLoadingResult(false);
-        } else {
-          setTimeout(() => getCallDetails(interval), interval);
-        }
-      })
-      .catch((error) => alert(error));
   };
 
   const showForm = !loading && !started && !loadingResult && !callResult;
@@ -73,6 +85,7 @@ function App() {
       {showForm && (
         <>
           <h1>Contact Details (Required)</h1>
+
           <input
             type="text"
             placeholder="First Name"
@@ -80,6 +93,7 @@ function App() {
             className="input-field"
             onChange={handleInputChange(setFirstName)}
           />
+
           <input
             type="text"
             placeholder="Last Name"
@@ -87,6 +101,7 @@ function App() {
             className="input-field"
             onChange={handleInputChange(setLastName)}
           />
+
           <input
             type="email"
             placeholder="Email address"
@@ -94,6 +109,7 @@ function App() {
             className="input-field"
             onChange={handleInputChange(setEmail)}
           />
+
           <input
             type="tel"
             placeholder="Phone number"
@@ -101,25 +117,19 @@ function App() {
             className="input-field"
             onChange={handleInputChange(setPhoneNumber)}
           />
-          {!started && (
-            <button
-              onClick={handleStart}
-              disabled={!allFieldsFilled}
-              className="button"
-            >
-              Start Application Call
-            </button>
-          )}
+
+          <button
+            onClick={handleStart}
+            disabled={!allFieldsFilled || loading}
+            className="button"
+          >
+            Start Application Call
+          </button>
         </>
       )}
-      {loadingResult && <p>Loading call details... please wait</p>}
-      {!loadingResult && callResult && (
-        <div className="call-result">
-          <p>Qualified: {callResult.analysis.structuredData.is_qualified.toString()}</p>
-          <p>{callResult.summary}</p>
-        </div>
-      )}
-      {(loading || loadingResult) && <div className="loading"></div>}
+
+      {loading && <div className="loading"></div>}
+
       {started && (
         <ActiveCallDetails
           assistantIsSpeaking={assistantIsSpeaking}
@@ -130,4 +140,5 @@ function App() {
     </div>
   );
 }
+
 export default App;
