@@ -30,21 +30,28 @@ function App() {
       setLoading(false);
     };
 
+    const onSpeechStart = () => setAssistantIsSpeaking(true);
+    const onSpeechEnd = () => setAssistantIsSpeaking(false);
+    const onVolume = (level) => setVolumeLevel(level);
+
     vapi.on("call-start", onStart);
     vapi.on("call-end", onEnd);
-    vapi.on("speech-start", () => setAssistantIsSpeaking(true));
-    vapi.on("speech-end", () => setAssistantIsSpeaking(false));
-    vapi.on("volume-level", (level) => setVolumeLevel(level));
+    vapi.on("speech-start", onSpeechStart);
+    vapi.on("speech-end", onSpeechEnd);
+    vapi.on("volume-level", onVolume);
 
     return () => {
       vapi.off("call-start", onStart);
       vapi.off("call-end", onEnd);
+      vapi.off("speech-start", onSpeechStart);
+      vapi.off("speech-end", onSpeechEnd);
+      vapi.off("volume-level", onVolume);
     };
   }, []);
 
   const handleInputChange = (setter) => (e) => setter(e.target.value);
 
-  // ✅ Robust Start Handler with mic check
+  // ✅ Start Assistant with proper microphone handling
   const handleStart = async () => {
     if (!firstName || !lastName || !email || !phoneNumber) {
       alert("Please fill all required fields");
@@ -56,9 +63,12 @@ function App() {
     try {
       // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      if (!stream) throw new Error("No audio stream returned");
+
       console.log("Mic access granted:", stream);
 
-      // Start assistant only after mic is granted
+      // Start assistant after mic access is granted
       const data = await startAssistant(firstName, lastName, email, phoneNumber);
 
       if (!data || !data.id) {
@@ -66,19 +76,20 @@ function App() {
       }
 
       setCallId(data.id);
+      setStarted(true); // explicitly set started here
       setLoading(false);
     } catch (err) {
       console.error("Failed to start call:", err);
 
       let msg = "Failed to start call. Check mic permission & console.";
 
-      // Provide specific error messages
+      // Specific error messages for mic
       if (err.name === "NotAllowedError") {
-        msg = "Mic access denied. Please allow microphone permission in browser.";
+        msg = "Microphone access denied. Please allow microphone in browser settings.";
       } else if (err.name === "NotFoundError") {
-        msg = "No microphone detected. Please connect a microphone.";
+        msg = "No microphone found. Please connect a microphone.";
       } else if (err.name === "NotReadableError") {
-        msg = "Microphone is already in use by another app.";
+        msg = "Microphone is already in use by another application.";
       }
 
       alert(msg);
@@ -88,6 +99,7 @@ function App() {
 
   const handleStop = () => {
     stopAssistant();
+    setStarted(false);
   };
 
   const showForm = !loading && !started && !loadingResult && !callResult;
